@@ -153,8 +153,6 @@ public class MainActivity extends Activity {
         stopButton = findViewById(R.id.stop_button);
 
         ndtTestImpl = new NDTTestImpl(null);
-
-        initializeOutputFiles(); // initialize CSV output files for passive and active measurements
         initializeTelephonyManager();
 
         downloadButton.setOnClickListener(v -> {
