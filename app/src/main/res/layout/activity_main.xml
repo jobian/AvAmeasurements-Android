@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#861F41"
     tools:context=".MainActivity">
 
     <TextView
@@ -12,6 +13,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="10dp"
         android:layout_marginTop="10dp"
+        android:textColor="#E87722"
         android:textSize="36sp"
         app:layout_constraintBottom_toTopOf="@id/upload_progress_text_view"
         app:layout_constraintEnd_toEndOf="parent"
@@ -26,6 +28,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="20dp"
         android:layout_marginTop="10dp"
+        android:textColor="#E87722"
         android:textSize="24sp"
         app:layout_constraintBottom_toTopOf="@id/download_button"
         app:layout_constraintEnd_toEndOf="parent"
@@ -37,31 +40,22 @@
         android:id="@+id/download_button"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
         android:text="Download test"
-        app:layout_constraintBottom_toTopOf="@id/upload_button"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        app:layout_constraintStart_toStartOf="parent"
+        tools:layout_editor_absoluteY="539dp" />
 
-    <Button
-        android:id="@+id/upload_button"
+    <TextView
+        android:id="@+id/samp_int_text"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:enabled="false"
-        android:text="Upload test"
-        app:layout_constraintBottom_toTopOf="@id/both_button"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        android:text="TextView" />
 
-    <Button
-        android:id="@+id/both_button"
+    <TextView
+        android:id="@+id/duration_text"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:enabled="false"
-        android:text="Download/upload test"
-        app:layout_constraintBottom_toTopOf="@id/stop_button"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        android:text="TextView" />
 
     <Button
         android:id="@+id/stop_button"

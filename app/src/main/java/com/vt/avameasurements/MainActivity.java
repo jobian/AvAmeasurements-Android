@@ -136,7 +136,7 @@ public class MainActivity extends Activity {
     private TelephonyManager.CellInfoCallback cellInfoCallback;
     private OutputStreamWriter pOSW, aOSW;
     private File passiveDataFile, activeDataFile;
-    private final boolean _DEBUG_ = false;
+    private final boolean _DEBUG_ = true;
     private String PMR;
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
@@ -159,7 +159,7 @@ public class MainActivity extends Activity {
             initializeOutputFiles(); // initialize CSV output files for passive and active measurements
             try {
                 collectPassiveMeasurements();
-            } catch (IOException ioe) {
+            } catch (Exception ioe) {
                 ioe.printStackTrace();
             }
 
@@ -272,7 +272,7 @@ public class MainActivity extends Activity {
             pOSW.write("timestamp,rsrp,rsrq,rssnr,cqi,mcc,mnc,tac,pci,earfcn,enbID,bw_khz,isServingCell" + "\n");
 
             aOSW = new OutputStreamWriter(new FileOutputStream(activeDataFile));
-            aOSW.write("timestamp,minRTT,avgRTT,maxRTT,mdevRTT,pctPktLoss" + "\n");
+            aOSW.write("timestamp,BW,minRTT,CwndGain,avgRTT,RTTvar,TotalRetrans,PacingGain,BusyTime,ElapsedTime,DLspeed" + "\n");
 
         } catch (IOException e) {
             e.printStackTrace();
