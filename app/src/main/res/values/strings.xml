@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">AvA Mobile Measurements App</string>
+    <string name="samp_int_txt">30</string>
+    <string name="samp_dur_txt">60</string>
 </resources>

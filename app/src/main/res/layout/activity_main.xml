@@ -40,22 +40,38 @@
         android:id="@+id/download_button"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="28dp"
         android:text="Download test"
+        app:layout_constraintBottom_toTopOf="@+id/duration_text"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        tools:layout_editor_absoluteY="539dp" />
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent" />
 
-    <TextView
+    <EditText
         android:id="@+id/samp_int_text"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="TextView" />
+        android:layout_height="40dp"
+        android:layout_marginBottom="8dp"
+        android:background="#FFFFFF"
+        android:text="@string/samp_int_txt"
+        android:textAlignment="center"
+        app:layout_constraintBottom_toTopOf="@+id/stop_button"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/duration_text" />
 
-    <TextView
+    <EditText
         android:id="@+id/duration_text"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="TextView" />
+        android:layout_height="40dp"
+        android:background="#FFFFFF"
+        android:text="@string/samp_dur_txt"
+        android:textAlignment="center"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/download_button" />
 
     <Button
         android:id="@+id/stop_button"
@@ -66,5 +82,16 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
+
+    <ImageView
+        android:id="@+id/imageView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/virginia_tech_logo"
+        app:layout_constraintBottom_toTopOf="@+id/download_progress_text_view"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

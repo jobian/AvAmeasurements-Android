@@ -14,6 +14,12 @@ import android.telephony.CellSignalStrengthLte;
 import android.telephony.TelephonyManager;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.EditText;
+
+import android.net.Uri;
+import android.content.Intent;
+import android.app.PendingIntent;
+import android.app.Notification;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
@@ -35,6 +41,7 @@ import java.text.DecimalFormat;
 import java.util.List;
 
 import okhttp3.OkHttpClient;
+//import com.google.api.client.http.FileContent;
 
 public class MainActivity extends Activity {
     private static final String TAG = "AvA";
@@ -118,19 +125,16 @@ public class MainActivity extends Activity {
                 return;
             }
             runOnUiThread(() -> toggleEnabledButtons(false));
-            closeOutputFiles();
         }
 
         public String getAMR() { return AMR; }
     }
 
     private final DecimalFormat decimalFormat = new DecimalFormat("#.00");
-    private TextView downloadProgressTextView;
-    private TextView uploadProgressTextView;
-    private Button downloadButton;
-    private Button uploadButton;
-    private Button bothButton;
-    private Button stopButton;
+    private TextView downloadProgressTextView, uploadProgressTextView;
+    private EditText durationTextView, intervalTextView;
+    private int interval=0, duration=0;
+    private Button downloadButton, stopButton;
     private NDTTestImpl ndtTestImpl;
     private TelephonyManager telephonyManager;
     private TelephonyManager.CellInfoCallback cellInfoCallback;
@@ -144,37 +148,85 @@ public class MainActivity extends Activity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+/*
+        // If the notification supports a direct reply action, use
+        // PendingIntent.FLAG_MUTABLE instead.
+        Intent notificationIntent = new Intent(this, ExampleActivity.class);
+        PendingIntent pendingIntent =
+                PendingIntent.getActivity(this, 0, notificationIntent,
+                        PendingIntent.FLAG_IMMUTABLE);
 
+        Notification notification =
+                new Notification.Builder(this, CHANNEL_DEFAULT_IMPORTANCE)
+                        .setContentTitle("AvA mobile measurements")
+                        .setContentText("AvA is collecting signal measurements...")
+                        .setContentIntent(pendingIntent)
+                        .setSmallIcon(null)
+                        .build();
+        //.setTicker(getText(R.string.ticker_text))
+
+        // Notification ID cannot be 0.
+        Service.startForeground(notification, FOREGROUND_SERVICE_TYPE_LOCATION);
+*/
         downloadProgressTextView = findViewById(R.id.download_progress_text_view);
         uploadProgressTextView = findViewById(R.id.upload_progress_text_view);
         downloadButton = findViewById(R.id.download_button);
-        uploadButton = findViewById(R.id.upload_button);
-        bothButton = findViewById(R.id.both_button);
+        intervalTextView = (EditText)findViewById(R.id.samp_int_text);
+        durationTextView = (EditText)findViewById(R.id.duration_text);
         stopButton = findViewById(R.id.stop_button);
 
         ndtTestImpl = new NDTTestImpl(null);
         initializeTelephonyManager();
 
         downloadButton.setOnClickListener(v -> {
-            initializeOutputFiles(); // initialize CSV output files for passive and active measurements
-            try {
-                collectPassiveMeasurements();
-            } catch (Exception ioe) {
-                ioe.printStackTrace();
-            }
+            toggleEnabledButtons(false);
 
-            ndtTestImpl.startTest(NdtTest.TestType.DOWNLOAD);
+            long interval_start;
+            long currTime = interval_start = System.currentTimeMillis();
+
+            int duration_secs, interval_secs;
+            try {
+                duration_secs = Integer.parseInt(durationTextView.getText().toString());
+            } catch (NumberFormatException nfe) {
+                duration_secs = 60; // Default: 1-min run
+            }
+            try {
+                interval_secs = Integer.parseInt(intervalTextView.getText().toString());
+            } catch (NumberFormatException nfe) {
+                interval_secs = 30; // Default: 30-sec interval
+            }
+            long endTime = currTime + (duration_secs * 1000);
+
+            initializeOutputFiles(currTime); // initialize CSV output files for passive and active measurements
+
+            while (currTime < endTime) {
+                while (currTime < interval_start) { // advance timer until start of next interval
+                    try {
+                        Thread.sleep(100);
+                    } // sleep for 100 ms
+                    catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                    currTime = System.currentTimeMillis();
+                }
+
+                try {
+                    collectPassiveMeasurements();
+                } catch (Exception ioe) {
+                    ioe.printStackTrace();
+                }
+
+                ndtTestImpl.startTest(NdtTest.TestType.DOWNLOAD);
+
+                interval_start += (interval_secs*1000);
+                currTime = System.currentTimeMillis();
+            }
+            closeOutputFiles();
             toggleEnabledButtons(true);
+
         });
-        /*
-        uploadButton.setOnClickListener(v -> {
-            ndtTestImpl.startTest(NdtTest.TestType.UPLOAD);
-            toggleEnabledButtons(true);
-        });
-        bothButton.setOnClickListener(v -> {
-            ndtTestImpl.startTest(NdtTest.TestType.DOWNLOAD_AND_UPLOAD);
-            toggleEnabledButtons(true);
-        });*/
+
         stopButton.setOnClickListener(v -> {
             ndtTestImpl.stopTest();
             toggleEnabledButtons(false);
@@ -258,9 +310,9 @@ public class MainActivity extends Activity {
         };
     }
 
-    public void initializeOutputFiles() {
+    public void initializeOutputFiles2(long time_msecs) {
         // Create and open output CSV files for passive and active measurement data
-        String csvFileName = "Cell_Data_" + System.currentTimeMillis() + ".csv";
+        String csvFileName = "Cell_Data_" + time_msecs + ".csv";
         System.out.println("Writing measurements out to files: " + csvFileName);
         try {
             passiveDataFile = new File(Environment.getExternalStoragePublicDirectory(
@@ -277,16 +329,51 @@ public class MainActivity extends Activity {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        /*
+        FileContent passiveContent = new FileContent("application/octet-stream", passiveDataFile);
+        FileContent activeContent = new FileContent("application/octet-stream", activeDataFile);
+        File file = driveService.files().create(passiveDataFile, passiveContent)
+                .setFields("id")
+                .execute();
+        System.out.println("File ID: " + file.getId());
+        */
+    }
+
+    private void initializeOutputFiles(long time_msecs)
+    {
+        // Create and open output CSV files for passive and active measurement data
+        String csvFileName = "Cell_Data_" + time_msecs + ".csv";
+        System.out.println("Writing measurements out to files: " + csvFileName);
+
+        try
+        {
+            pOSW = new OutputStreamWriter(openFileOutput("p" + csvFileName, Context.MODE_PRIVATE));
+            pOSW.write("timestamp,rsrp,rsrq,rssnr,cqi,mcc,mnc,tac,pci,earfcn,enbID,bw_khz,isServingCell" + "\n");
+
+            aOSW = new OutputStreamWriter(openFileOutput("a" + csvFileName, Context.MODE_PRIVATE));
+            aOSW.write("timestamp,BW,minRTT,CwndGain,avgRTT,RTTvar,TotalRetrans,PacingGain,BusyTime,ElapsedTime,DLspeed" + "\n");
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+        System.out.println("writing to file " + csvFileName + "completed...");
+
     }
 
     public void closeOutputFiles() {
         // Close CSV files for passive and active measurement data
+        System.out.println("Closing Output Files.");
         try {
+            pOSW.flush();
             pOSW.close();
+
+            aOSW.flush();
             aOSW.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
+
         System.out.println("EXITING. CLOSING FILES.");
     }
 
@@ -333,4 +420,19 @@ public class MainActivity extends Activity {
         System.out.println("Upload Progress: " + speed);
         uploadProgressTextView.setText(speed);
     }
+
+    /** Authorizes the installed application to access user's protected data. *
+    private static Credential authorize() throws Exception {
+        // load client secrets
+        GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(JSON_FACTORY,
+                new InputStreamReader(CalendarSample.class.getResourceAsStream("/client_secrets.json")));
+        // set up authorization code flow
+        GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
+                httpTransport, JSON_FACTORY, clientSecrets,
+                Collections.singleton(CalendarScopes.CALENDAR)).setDataStoreFactory(dataStoreFactory)
+                .build();
+        // authorize
+        return new AuthorizationCodeInstalledApp(flow, new LocalServerReceiver()).authorize("user");
+    }
+    */
 }
