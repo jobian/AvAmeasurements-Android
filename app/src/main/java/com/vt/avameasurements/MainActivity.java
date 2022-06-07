@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -15,8 +16,13 @@ import android.telephony.TelephonyManager;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.EditText;
-
+import android.provider.MediaStore;
+import android.content.ContentValues;
+import android.content.ContentResolver;
 import android.net.Uri;
+
+import java.io.FileNotFoundException;
+import java.net.URL;
 import android.content.Intent;
 import android.app.PendingIntent;
 import android.app.Notification;
@@ -24,6 +30,10 @@ import android.app.Notification;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
+
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.tasks.OnSuccessListener;
 
 import net.measurementlab.ndt7.android.NdtTest;
 import net.measurementlab.ndt7.android.models.ClientResponse;
@@ -34,14 +44,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.text.DecimalFormat;
 import java.util.List;
-
 import okhttp3.OkHttpClient;
-//import com.google.api.client.http.FileContent;
 
 public class MainActivity extends Activity {
     private static final String TAG = "AvA";
@@ -100,19 +107,7 @@ public class MainActivity extends Activity {
                 System.out.println("\t-->Measurement download progress: TotalRetrans = " + measurement.getTcpInfo().getTotalRetrans());
             }
         }
-        /*
-        @Override
-        public void onUploadProgress(@NotNull ClientResponse clientResponse) {
-            super.onUploadProgress(clientResponse);
-            runOnUiThread(() -> showUploadProgress(clientResponse));
-        }
 
-        @Override
-        public void onMeasurementUploadProgress(@NotNull Measurement measurement) {
-            super.onMeasurementUploadProgress(measurement);
-            System.out.println("Measurement upload Progress: " + measurement);
-        }
-        */
         @Override
         public void onFinished(
                 @Nullable ClientResponse clientResponse,
@@ -124,16 +119,17 @@ public class MainActivity extends Activity {
             if (testType == TestType.DOWNLOAD_AND_UPLOAD && testType == TestType.DOWNLOAD) {
                 return;
             }
-            runOnUiThread(() -> toggleEnabledButtons(false));
         }
 
-        public String getAMR() { return AMR; }
+        public String getAMR() {
+            return AMR;
+        }
     }
 
     private final DecimalFormat decimalFormat = new DecimalFormat("#.00");
     private TextView downloadProgressTextView, uploadProgressTextView;
     private EditText durationTextView, intervalTextView;
-    private int interval=0, duration=0;
+    private int interval = 0, duration = 0;
     private Button downloadButton, stopButton;
     private NDTTestImpl ndtTestImpl;
     private TelephonyManager telephonyManager;
@@ -142,12 +138,15 @@ public class MainActivity extends Activity {
     private File passiveDataFile, activeDataFile;
     private final boolean _DEBUG_ = true;
     private String PMR;
+    private double latitude, longitude;
+    private FusedLocationProviderClient fusedLocationClient;
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 /*
         // If the notification supports a direct reply action, use
         // PendingIntent.FLAG_MUTABLE instead.
@@ -171,15 +170,16 @@ public class MainActivity extends Activity {
         downloadProgressTextView = findViewById(R.id.download_progress_text_view);
         uploadProgressTextView = findViewById(R.id.upload_progress_text_view);
         downloadButton = findViewById(R.id.download_button);
-        intervalTextView = (EditText)findViewById(R.id.samp_int_text);
-        durationTextView = (EditText)findViewById(R.id.duration_text);
+        intervalTextView = (EditText) findViewById(R.id.samp_int_text);
+        durationTextView = (EditText) findViewById(R.id.duration_text);
         stopButton = findViewById(R.id.stop_button);
+        stopButton.setEnabled(true);
 
         ndtTestImpl = new NDTTestImpl(null);
         initializeTelephonyManager();
 
         downloadButton.setOnClickListener(v -> {
-            toggleEnabledButtons(false);
+            toggleEnabledButtons(true);
 
             long interval_start;
             long currTime = interval_start = System.currentTimeMillis();
@@ -202,8 +202,8 @@ public class MainActivity extends Activity {
             while (currTime < endTime) {
                 while (currTime < interval_start) { // advance timer until start of next interval
                     try {
-                        Thread.sleep(100);
-                    } // sleep for 100 ms
+                        Thread.sleep(500);
+                    } // sleep for 500 ms
                     catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -212,40 +212,60 @@ public class MainActivity extends Activity {
                 }
 
                 try {
+                    if (_DEBUG_)
+                        System.out.println("Initializing passive measurement collection... [" + currTime + "]");
                     collectPassiveMeasurements();
                 } catch (Exception ioe) {
                     ioe.printStackTrace();
                 }
 
+                if (_DEBUG_)
+                    System.out.println("Initializing NDT7 measurement collection... [" + currTime + "]");
                 ndtTestImpl.startTest(NdtTest.TestType.DOWNLOAD);
 
-                interval_start += (interval_secs*1000);
+                interval_start += (interval_secs * 1000);
                 currTime = System.currentTimeMillis();
             }
-            closeOutputFiles();
-            toggleEnabledButtons(true);
-
         });
 
         stopButton.setOnClickListener(v -> {
             ndtTestImpl.stopTest();
-            toggleEnabledButtons(false);
+            this.onDestroy();
         });
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        toggleEnabledButtons(false);
+        closeOutputFiles();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
     public void collectPassiveMeasurements() throws IOException {
         if (telephonyManager == null) throw new IOException("Null TelephonyManager");
-        else if (cellInfoCallback == null) throw new IOException("Null TelephonyManager.CellInfoCallback");
+        else if (cellInfoCallback == null)
+            throw new IOException("Null TelephonyManager.CellInfoCallback");
 
         /***
          * Requests all available cell information from the current subscription for
          * observed camped/registered, serving, and neighboring cells.
          */
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,new String[] { Manifest.permission.ACCESS_FINE_LOCATION }, 1);
-        }
-        telephonyManager.requestCellInfoUpdate(getMainExecutor(), cellInfoCallback);
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+
+            telephonyManager.requestCellInfoUpdate(getMainExecutor(), cellInfoCallback);
+            fusedLocationClient.getLastLocation()
+                    .addOnSuccessListener(this, new OnSuccessListener<Location>() {
+                        @Override
+                        public void onSuccess(Location location) {
+                            // Got last known location. In some rare situations this can be null.
+                            if (location != null) {
+                                latitude = location.getLatitude();
+                                longitude = location.getLongitude();
+                            }
+                        }
+                    });        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
@@ -285,13 +305,14 @@ public class MainActivity extends Activity {
                                     ", Earfcn: " + ltecellID.getEarfcn() + ", Pci: " + ltecellID.getPci() + ", TAC: " + ltecellID.getTac());
                             System.out.println("Cell ID: mcc = " + ltecellID.getMccString() + ", mnc = " + ltecellID.getMncString() + ", BW = " +
                                     ltecellID.getBandwidth());
-                            System.out.println("Cell info: connectionStatus = " + lteInfo.getCellConnectionStatus());
+                            System.out.println("Cell info: connectionStatus = " + lteInfo.getCellConnectionStatus() + ", Location - LAT: " +
+                                    latitude + ", LONG:" + longitude);
                             //System.out.println("Cell signal strength: Dbu: " + lteInfo.getCellSignalStrength().getDbm() + ", ASU = " + lteInfo.getCellSignalStrength().getAsuLevel());
                         }
 
                         // Compose the passive measurement report
-                        // Format: timestamp,rsrp,rsrq,rssnr,cqi,mcc,mnc,tac,pci,earfcn,enbID,bw_khz,isServingCell
-                        PMR = currTime + "," + lteSigStrength.getRsrp() + "," + lteSigStrength.getRsrq() + "," +
+                        // Format: timestamp,lat,long,rsrp,rsrq,rssnr,cqi,mcc,mnc,tac,pci,earfcn,enbID,bw_khz,isServingCell
+                        PMR = currTime + "," + latitude + "," + longitude + "," + lteSigStrength.getRsrp() + "," + lteSigStrength.getRsrq() + "," +
                                 lteSigStrength.getRssnr() + "," + lteSigStrength.getCqi() + "," + ltecellID.getMccString() +
                                 "," + ltecellID.getMncString() + "," + ltecellID.getTac() + "," + ltecellID.getPci() +
                                 "," + ltecellID.getEarfcn() + "," + ltecellID.getCi() + "," + ltecellID.getBandwidth() +
@@ -303,13 +324,15 @@ public class MainActivity extends Activity {
                             e.printStackTrace();
                         }
                     } else {
-                        if (_DEBUG_) System.out.println("--> NON-LTE CELL FOUND: " + cellInfoList.get(i).getClass());
+                        if (_DEBUG_)
+                            System.out.println("--> NON-LTE CELL FOUND: " + cellInfoList.get(i).getClass());
                     }
                 }
             }
         };
     }
 
+    /*
     public void initializeOutputFiles2(long time_msecs) {
         // Create and open output CSV files for passive and active measurement data
         String csvFileName = "Cell_Data_" + time_msecs + ".csv";
@@ -329,36 +352,53 @@ public class MainActivity extends Activity {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        /*
-        FileContent passiveContent = new FileContent("application/octet-stream", passiveDataFile);
-        FileContent activeContent = new FileContent("application/octet-stream", activeDataFile);
-        File file = driveService.files().create(passiveDataFile, passiveContent)
-                .setFields("id")
-                .execute();
-        System.out.println("File ID: " + file.getId());
-        */
     }
+    */
 
-    private void initializeOutputFiles(long time_msecs)
-    {
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private void initializeOutputFiles(long time_msecs) {
         // Create and open output CSV files for passive and active measurement data
         String csvFileName = "Cell_Data_" + time_msecs + ".csv";
         System.out.println("Writing measurements out to files: " + csvFileName);
+        initCSV(getApplicationContext(), csvFileName);
 
-        try
-        {
-            pOSW = new OutputStreamWriter(openFileOutput("p" + csvFileName, Context.MODE_PRIVATE));
-            pOSW.write("timestamp,rsrp,rsrq,rssnr,cqi,mcc,mnc,tac,pci,earfcn,enbID,bw_khz,isServingCell" + "\n");
+        System.out.println("writing to file " + csvFileName + " completed...");
+    }
 
-            aOSW = new OutputStreamWriter(openFileOutput("a" + csvFileName, Context.MODE_PRIVATE));
-            aOSW.write("timestamp,BW,minRTT,CwndGain,avgRTT,RTTvar,TotalRetrans,PacingGain,BusyTime,ElapsedTime,DLspeed" + "\n");
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    private void initCSV(Context context, String fileName) {
+        String mimeType = "text/csv";
+
+        ContentValues p_contentValues = new ContentValues();
+        p_contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, "p" + fileName);
+        p_contentValues.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+        p_contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+
+        ContentValues a_contentValues = new ContentValues();
+        a_contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, "a" + fileName);
+        a_contentValues.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+        a_contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+
+        ContentResolver resolver = context.getContentResolver();
+        Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, p_contentValues);
+        if (uri != null) {
+            try {
+                pOSW = new OutputStreamWriter(resolver.openOutputStream(uri));
+                pOSW.write("timestamp,lat,long,rsrp,rsrq,rssnr,cqi,mcc,mnc,tac,pci,earfcn,enbID,bw_khz,isServingCell" + "\n");
+            } catch (Exception fnfe) {
+                fnfe.printStackTrace();
+            }
         }
-        catch (IOException e)
-        {
-            e.printStackTrace();
-        }
-        System.out.println("writing to file " + csvFileName + "completed...");
 
+        uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, a_contentValues);
+        if (uri != null) {
+            try {
+                aOSW = new OutputStreamWriter(resolver.openOutputStream(uri));
+                aOSW.write("timestamp,BW,minRTT,CwndGain,avgRTT,RTTvar,TotalRetrans,PacingGain,BusyTime,ElapsedTime,DLspeed" + "\n");
+            } catch (Exception fnfe) {
+                fnfe.printStackTrace();
+            }
+        }
     }
 
     public void closeOutputFiles() {
@@ -382,8 +422,7 @@ public class MainActivity extends Activity {
             if (isActive && aOSW != null && measurements != null) {
                 System.out.println("Active measurements: " + measurements);
                 aOSW.write(measurements + "\n");
-            }
-            else if (pOSW != null && measurements != null) {
+            } else if (pOSW != null && measurements != null) {
                 System.out.println("Passive measurements: " + measurements);
                 pOSW.write(measurements + "\n");
             }
@@ -391,12 +430,13 @@ public class MainActivity extends Activity {
             e.printStackTrace();
         }
     }
+
     private void toggleEnabledButtons(boolean testIsRunning) {
+        System.out.println("---TOGGLE--- (" + testIsRunning + ")");
         downloadButton.setEnabled(!testIsRunning);
-        stopButton.setEnabled(testIsRunning);
+        //stopButton.setEnabled(testIsRunning);
         if (testIsRunning) {
             downloadProgressTextView.setText("");
-            //uploadProgressTextView.setText("");
         }
     }
 
@@ -412,7 +452,7 @@ public class MainActivity extends Activity {
         System.out.println("Download Progress: " + speed);
         downloadProgressTextView.setText(speed);
 
-        writeMeasurementOutputs(ndtTestImpl.getAMR()+","+speed, true);
+        writeMeasurementOutputs(ndtTestImpl.getAMR() + "," + speed, true);
     }
 
     private void showUploadProgress(ClientResponse clientResponse) {
@@ -422,17 +462,17 @@ public class MainActivity extends Activity {
     }
 
     /** Authorizes the installed application to access user's protected data. *
-    private static Credential authorize() throws Exception {
-        // load client secrets
-        GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(JSON_FACTORY,
-                new InputStreamReader(CalendarSample.class.getResourceAsStream("/client_secrets.json")));
-        // set up authorization code flow
-        GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
-                httpTransport, JSON_FACTORY, clientSecrets,
-                Collections.singleton(CalendarScopes.CALENDAR)).setDataStoreFactory(dataStoreFactory)
-                .build();
-        // authorize
-        return new AuthorizationCodeInstalledApp(flow, new LocalServerReceiver()).authorize("user");
-    }
-    */
+     private static Credential authorize() throws Exception {
+     // load client secrets
+     GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(JSON_FACTORY,
+     new InputStreamReader(CalendarSample.class.getResourceAsStream("/client_secrets.json")));
+     // set up authorization code flow
+     GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
+     httpTransport, JSON_FACTORY, clientSecrets,
+     Collections.singleton(CalendarScopes.CALENDAR)).setDataStoreFactory(dataStoreFactory)
+     .build();
+     // authorize
+     return new AuthorizationCodeInstalledApp(flow, new LocalServerReceiver()).authorize("user");
+     }
+     */
 }
