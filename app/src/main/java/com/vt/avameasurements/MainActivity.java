@@ -136,7 +136,7 @@ public class MainActivity extends Activity {
     private TelephonyManager.CellInfoCallback cellInfoCallback;
     private OutputStreamWriter pOSW, aOSW;
     private File passiveDataFile, activeDataFile;
-    private final boolean _DEBUG_ = true;
+    private final boolean _DEBUG_ = false;
     private String PMR;
     private double latitude, longitude;
     private FusedLocationProviderClient fusedLocationClient;
@@ -146,6 +146,8 @@ public class MainActivity extends Activity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        initializeTelephonyManager();
+
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 /*
         // If the notification supports a direct reply action, use
@@ -176,7 +178,6 @@ public class MainActivity extends Activity {
         stopButton.setEnabled(true);
 
         ndtTestImpl = new NDTTestImpl(null);
-        initializeTelephonyManager();
 
         downloadButton.setOnClickListener(v -> {
             toggleEnabledButtons(true);
@@ -253,8 +254,8 @@ public class MainActivity extends Activity {
          */
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
-
-            telephonyManager.requestCellInfoUpdate(getMainExecutor(), cellInfoCallback);
+        }
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
             fusedLocationClient.getLastLocation()
                     .addOnSuccessListener(this, new OnSuccessListener<Location>() {
                         @Override
@@ -263,9 +264,14 @@ public class MainActivity extends Activity {
                             if (location != null) {
                                 latitude = location.getLatitude();
                                 longitude = location.getLongitude();
+                                if (_DEBUG_) System.out.println("LOCATION INFO: latitude = " + latitude + ", longitude = " + longitude);
                             }
                         }
-                    });        }
+                    });
+
+            telephonyManager.requestCellInfoUpdate(getMainExecutor(), cellInfoCallback);
+        }
+        else if (_DEBUG_) System.out.println("---------->PERMISSIONS ISSUE: TelephonyManager");
     }
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
@@ -332,37 +338,14 @@ public class MainActivity extends Activity {
         };
     }
 
-    /*
-    public void initializeOutputFiles2(long time_msecs) {
-        // Create and open output CSV files for passive and active measurement data
-        String csvFileName = "Cell_Data_" + time_msecs + ".csv";
-        System.out.println("Writing measurements out to files: " + csvFileName);
-        try {
-            passiveDataFile = new File(Environment.getExternalStoragePublicDirectory(
-                    Environment.DIRECTORY_DOWNLOADS), "p" + csvFileName);
-            activeDataFile = new File(Environment.getExternalStoragePublicDirectory(
-                    Environment.DIRECTORY_DOWNLOADS), "a" + csvFileName);
-
-            pOSW = new OutputStreamWriter(new FileOutputStream(passiveDataFile));
-            pOSW.write("timestamp,rsrp,rsrq,rssnr,cqi,mcc,mnc,tac,pci,earfcn,enbID,bw_khz,isServingCell" + "\n");
-
-            aOSW = new OutputStreamWriter(new FileOutputStream(activeDataFile));
-            aOSW.write("timestamp,BW,minRTT,CwndGain,avgRTT,RTTvar,TotalRetrans,PacingGain,BusyTime,ElapsedTime,DLspeed" + "\n");
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-    */
-
     @RequiresApi(api = Build.VERSION_CODES.Q)
     private void initializeOutputFiles(long time_msecs) {
         // Create and open output CSV files for passive and active measurement data
         String csvFileName = "Cell_Data_" + time_msecs + ".csv";
-        System.out.println("Writing measurements out to files: " + csvFileName);
+        if (_DEBUG_) System.out.println("Writing measurements out to files: " + csvFileName);
         initCSV(getApplicationContext(), csvFileName);
 
-        System.out.println("writing to file " + csvFileName + " completed...");
+        if (_DEBUG_) System.out.println("writing to file " + csvFileName + " completed...");
     }
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
@@ -403,7 +386,7 @@ public class MainActivity extends Activity {
 
     public void closeOutputFiles() {
         // Close CSV files for passive and active measurement data
-        System.out.println("Closing Output Files.");
+        if (_DEBUG_) System.out.println("Closing Output Files.");
         try {
             pOSW.flush();
             pOSW.close();
@@ -414,16 +397,16 @@ public class MainActivity extends Activity {
             e.printStackTrace();
         }
 
-        System.out.println("EXITING. CLOSING FILES.");
+        if (_DEBUG_) System.out.println("EXITING. CLOSING FILES.");
     }
 
     public void writeMeasurementOutputs(String measurements, boolean isActive) {
         try {
             if (isActive && aOSW != null && measurements != null) {
-                System.out.println("Active measurements: " + measurements);
+                if (_DEBUG_) System.out.println("Active measurements: " + measurements);
                 aOSW.write(measurements + "\n");
             } else if (pOSW != null && measurements != null) {
-                System.out.println("Passive measurements: " + measurements);
+                if (_DEBUG_) System.out.println("Passive measurements: " + measurements);
                 pOSW.write(measurements + "\n");
             }
         } catch (IOException e) {
@@ -432,7 +415,7 @@ public class MainActivity extends Activity {
     }
 
     private void toggleEnabledButtons(boolean testIsRunning) {
-        System.out.println("---TOGGLE--- (" + testIsRunning + ")");
+        if (_DEBUG_) System.out.println("---TOGGLE--- (" + testIsRunning + ")");
         downloadButton.setEnabled(!testIsRunning);
         //stopButton.setEnabled(testIsRunning);
         if (testIsRunning) {
@@ -449,7 +432,7 @@ public class MainActivity extends Activity {
 
     private void showDownloadProgress(ClientResponse clientResponse) {
         String speed = formatProgress(clientResponse);
-        System.out.println("Download Progress: " + speed);
+        if (_DEBUG_) System.out.println("Download Progress: " + speed);
         downloadProgressTextView.setText(speed);
 
         writeMeasurementOutputs(ndtTestImpl.getAMR() + "," + speed, true);
@@ -457,7 +440,7 @@ public class MainActivity extends Activity {
 
     private void showUploadProgress(ClientResponse clientResponse) {
         String speed = formatProgress(clientResponse);
-        System.out.println("Upload Progress: " + speed);
+        if (_DEBUG_) System.out.println("Upload Progress: " + speed);
         uploadProgressTextView.setText(speed);
     }
 
