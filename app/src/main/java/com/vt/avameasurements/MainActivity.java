@@ -21,12 +21,6 @@ import android.content.ContentValues;
 import android.content.ContentResolver;
 import android.net.Uri;
 
-import java.io.FileNotFoundException;
-import java.net.URL;
-import android.content.Intent;
-import android.app.PendingIntent;
-import android.app.Notification;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
@@ -64,7 +58,9 @@ public class MainActivity extends Activity {
         @RequiresApi(api = Build.VERSION_CODES.Q)
         @Override
         public void startTest(@NonNull TestType testType) {
+            System.out.println("====> BEFORE startTest(NDT)");
             super.startTest(testType);
+            System.out.println("====> AFTER startTest(NDT)");
             this.testType = testType;
         }
 
@@ -83,6 +79,7 @@ public class MainActivity extends Activity {
                     measurement.getTcpInfo().getTotalRetrans() + "," + measurement.getBbrInfo().getPacingGain() + "," +
                     measurement.getTcpInfo().getBusyTime() + "," + measurement.getTcpInfo().getElapsedTime();
 
+            /*
             if (_DEBUG_) {
                 System.out.println("\t-->Measurement download progress: BW = " + measurement.getBbrInfo().getBw());
                 System.out.println("\t-->Measurement download progress: CwndGain = " + measurement.getBbrInfo().getCwndGain());
@@ -106,6 +103,7 @@ public class MainActivity extends Activity {
                 System.out.println("\t-->Measurement download progress: State = " + measurement.getTcpInfo().getState());
                 System.out.println("\t-->Measurement download progress: TotalRetrans = " + measurement.getTcpInfo().getTotalRetrans());
             }
+            */
         }
 
         @Override
@@ -116,6 +114,7 @@ public class MainActivity extends Activity {
         ) {
             assert clientResponse != null;
             System.out.println("Done Progress: " + DataConverter.convertToMbps(clientResponse));
+            writeMeasurementOutputs(getAMR() + "," + DataConverter.convertToMbps(clientResponse), true);
             if (testType == TestType.DOWNLOAD_AND_UPLOAD && testType == TestType.DOWNLOAD) {
                 return;
             }
@@ -127,7 +126,7 @@ public class MainActivity extends Activity {
     }
 
     private final DecimalFormat decimalFormat = new DecimalFormat("#.00");
-    private TextView downloadProgressTextView, uploadProgressTextView;
+    private TextView downloadProgressTextView, statusTextView;
     private EditText durationTextView, intervalTextView;
     private int interval = 0, duration = 0;
     private Button downloadButton, stopButton;
@@ -136,7 +135,7 @@ public class MainActivity extends Activity {
     private TelephonyManager.CellInfoCallback cellInfoCallback;
     private OutputStreamWriter pOSW, aOSW;
     private File passiveDataFile, activeDataFile;
-    private final boolean _DEBUG_ = false;
+    private final boolean _DEBUG_ = true;
     private String PMR;
     private double latitude, longitude;
     private FusedLocationProviderClient fusedLocationClient;
@@ -145,6 +144,7 @@ public class MainActivity extends Activity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        System.out.println("====> onCreate()");
         setContentView(R.layout.activity_main);
         initializeTelephonyManager();
 
@@ -170,7 +170,7 @@ public class MainActivity extends Activity {
         Service.startForeground(notification, FOREGROUND_SERVICE_TYPE_LOCATION);
 */
         downloadProgressTextView = findViewById(R.id.download_progress_text_view);
-        uploadProgressTextView = findViewById(R.id.upload_progress_text_view);
+        statusTextView = findViewById(R.id.status_text_view);
         downloadButton = findViewById(R.id.download_button);
         intervalTextView = (EditText) findViewById(R.id.samp_int_text);
         durationTextView = (EditText) findViewById(R.id.duration_text);
@@ -182,7 +182,7 @@ public class MainActivity extends Activity {
         downloadButton.setOnClickListener(v -> {
             toggleEnabledButtons(true);
 
-            long interval_start;
+            long interval_start, processingTime;
             long currTime = interval_start = System.currentTimeMillis();
 
             int duration_secs, interval_secs;
@@ -201,16 +201,6 @@ public class MainActivity extends Activity {
             initializeOutputFiles(currTime); // initialize CSV output files for passive and active measurements
 
             while (currTime < endTime) {
-                while (currTime < interval_start) { // advance timer until start of next interval
-                    try {
-                        Thread.sleep(500);
-                    } // sleep for 500 ms
-                    catch (Exception e) {
-                        e.printStackTrace();
-                    }
-
-                    currTime = System.currentTimeMillis();
-                }
 
                 try {
                     if (_DEBUG_)
@@ -224,7 +214,9 @@ public class MainActivity extends Activity {
                     System.out.println("Initializing NDT7 measurement collection... [" + currTime + "]");
                 ndtTestImpl.startTest(NdtTest.TestType.DOWNLOAD);
 
-                interval_start += (interval_secs * 1000);
+                processingTime = System.currentTimeMillis() - currTime;
+                processWait(interval_secs * 1000 - (System.currentTimeMillis() - currTime));
+
                 currTime = System.currentTimeMillis();
             }
         });
@@ -244,6 +236,7 @@ public class MainActivity extends Activity {
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
     public void collectPassiveMeasurements() throws IOException {
+        System.out.println("=====> inside collectPassiveMeasurements()");
         if (telephonyManager == null) throw new IOException("Null TelephonyManager");
         else if (cellInfoCallback == null)
             throw new IOException("Null TelephonyManager.CellInfoCallback");
@@ -281,10 +274,12 @@ public class MainActivity extends Activity {
             if (_DEBUG_) System.out.println("ERROR: TelephonyManager is NULL.");
             return;
         }
+        System.out.println("=====> initializeTelephonyManager()");
 
         cellInfoCallback = new TelephonyManager.CellInfoCallback() {
             @Override
             public void onCellInfo(List<CellInfo> cellInfoList) {
+                statusTextView.setText("Cell count: " + cellInfoList.size());
                 if (cellInfoList == null) {
                     System.err.println("NO CELL INFO FOUND.");
                     return;
@@ -325,7 +320,9 @@ public class MainActivity extends Activity {
                                 "," + isServingCell;
 
                         try {
+                            System.out.println("=====> BEFORE writeMeasurementOutputs(PMR)");
                             writeMeasurementOutputs(PMR, false);
+                            System.out.println("=====> AFTER writeMeasurementOutputs(PMR)");
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -364,6 +361,7 @@ public class MainActivity extends Activity {
 
         ContentResolver resolver = context.getContentResolver();
         Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, p_contentValues);
+        System.out.println("=====> initCSV(1)");
         if (uri != null) {
             try {
                 pOSW = new OutputStreamWriter(resolver.openOutputStream(uri));
@@ -374,6 +372,7 @@ public class MainActivity extends Activity {
         }
 
         uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, a_contentValues);
+        System.out.println("=====> initCSV(2)");
         if (uri != null) {
             try {
                 aOSW = new OutputStreamWriter(resolver.openOutputStream(uri));
@@ -402,6 +401,7 @@ public class MainActivity extends Activity {
 
     public void writeMeasurementOutputs(String measurements, boolean isActive) {
         try {
+            System.out.println("=====> writeMeasurementsOutputs()");
             if (isActive && aOSW != null && measurements != null) {
                 if (_DEBUG_) System.out.println("Active measurements: " + measurements);
                 aOSW.write(measurements + "\n");
@@ -438,10 +438,10 @@ public class MainActivity extends Activity {
         writeMeasurementOutputs(ndtTestImpl.getAMR() + "," + speed, true);
     }
 
-    private void showUploadProgress(ClientResponse clientResponse) {
-        String speed = formatProgress(clientResponse);
-        if (_DEBUG_) System.out.println("Upload Progress: " + speed);
-        uploadProgressTextView.setText(speed);
+    private void processWait(long ms)
+    {
+        try { Thread.sleep(ms); }
+        catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
     }
 
     /** Authorizes the installed application to access user's protected data. *
