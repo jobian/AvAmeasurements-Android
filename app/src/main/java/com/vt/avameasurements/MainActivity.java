@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -28,8 +27,8 @@ import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.tasks.OnSuccessListener;
 
 import net.measurementlab.ndt7.android.NdtTest;
 import net.measurementlab.ndt7.android.models.ClientResponse;
@@ -79,7 +78,7 @@ public class MainActivity extends Activity {
                     measurement.getTcpInfo().getTotalRetrans() + "," + measurement.getBbrInfo().getPacingGain() + "," +
                     measurement.getTcpInfo().getBusyTime() + "," + measurement.getTcpInfo().getElapsedTime();
 
-            if (_DEBUG_) {
+            if (_DEBUG2_) {
                 System.out.println("\t-->Measurement download progress: BW = " + measurement.getBbrInfo().getBw());
                 System.out.println("\t-->Measurement download progress: CwndGain = " + measurement.getBbrInfo().getCwndGain());
                 System.out.println("\t-->Measurement download progress: ElaspedTime(BBR) = " + measurement.getBbrInfo().getElapsedTime());
@@ -133,9 +132,10 @@ public class MainActivity extends Activity {
     //private TelephonyManager.CellInfoCallback cellInfoCallback;
     private OutputStreamWriter pOSW, aOSW;
     private File passiveDataFile, activeDataFile;
-    private final boolean _DEBUG_ = false;
+    private final boolean _DEBUG_ = true, _DEBUG2_ = false;
     private String PMR, recordID;
     private double latitude, longitude;
+    private LocationRequest locationRequest;
     private FusedLocationProviderClient fusedLocationClient;
     private boolean isDone = false;
 
@@ -147,26 +147,11 @@ public class MainActivity extends Activity {
         //initializeTelephonyManager();
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-/*
-        // If the notification supports a direct reply action, use
-        // PendingIntent.FLAG_MUTABLE instead.
-        Intent notificationIntent = new Intent(this, ExampleActivity.class);
-        PendingIntent pendingIntent =
-                PendingIntent.getActivity(this, 0, notificationIntent,
-                        PendingIntent.FLAG_IMMUTABLE);
 
-        Notification notification =
-                new Notification.Builder(this, CHANNEL_DEFAULT_IMPORTANCE)
-                        .setContentTitle("AvA mobile measurements")
-                        .setContentText("AvA is collecting signal measurements...")
-                        .setContentIntent(pendingIntent)
-                        .setSmallIcon(null)
-                        .build();
-        //.setTicker(getText(R.string.ticker_text))
+        locationRequest = LocationRequest.create();
+        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+        locationRequest.setInterval(30 * 1000);
 
-        // Notification ID cannot be 0.
-        Service.startForeground(notification, FOREGROUND_SERVICE_TYPE_LOCATION);
-*/
         downloadProgressTextView = findViewById(R.id.download_progress_text_view);
         statusTextView = findViewById(R.id.status_text_view);
         downloadButton = findViewById(R.id.download_button);
@@ -180,10 +165,7 @@ public class MainActivity extends Activity {
         mTelephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
         mTelephonyManager.listen(mPhoneStatelistener, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS);
 
-        ndtTestImpl = new NDTTestImpl(null);
-
         downloadButton.setOnClickListener(v -> {
-
             long interval_start, processingTime;
             long currTime = interval_start = System.currentTimeMillis();
 
@@ -217,11 +199,13 @@ public class MainActivity extends Activity {
                     System.out.println("Initializing NDT7 measurement collection... [" + currTime + "]");
 
                 if (_DEBUG_) System.out.println("--> before ndt.startTest()");
+                ndtTestImpl = new NDTTestImpl(null);
                 ndtTestImpl.startTest(NdtTest.TestType.DOWNLOAD);
 
                 if (_DEBUG_) System.out.println("--> after ndt.startTest()");
                 processingTime = System.currentTimeMillis() - currTime;
                 processWait(interval_secs * 1000 - (System.currentTimeMillis() - currTime));
+                mTelephonyManager.listen(mPhoneStatelistener, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS);
 
                 if (_DEBUG_) System.out.println("--> after WAIT()");
 
@@ -294,6 +278,7 @@ public class MainActivity extends Activity {
                         lteSigStrength = ((CellInfoLte) cellInfoList.get(i)).getCellSignalStrength();
                         isServingCell = ((CellInfoLte) cellInfoList.get(i)).isRegistered();
 
+                        // Update pData
                         pData[i][0] = ((lteCellId.getMccString() != null) && (lteCellId.getMncString() != null)) ?
                                 Integer.parseInt(lteCellId.getMccString() + lteCellId.getMncString()) : MAX_VAL; // MCC + MNC
                         pData[i][1] = lteCellId.getTac(); // TAC
@@ -331,7 +316,14 @@ public class MainActivity extends Activity {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
         }
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            fusedLocationClient.getLastLocation()
+            fusedLocationClient.getLastLocation().addOnSuccessListener(this, location -> {
+                if (location != null) {
+                    latitude = location.getLatitude();
+                    longitude = location.getLongitude();
+                    if (_DEBUG_) System.out.println("LOCATION INFO: latitude = " + latitude + ", longitude = " + longitude);
+                }
+            });
+                    /*
                     .addOnSuccessListener(this, new OnSuccessListener<Location>() {
                         @Override
                         public void onSuccess(Location location) {
@@ -344,11 +336,13 @@ public class MainActivity extends Activity {
                         }
                     });
 
+                     */
+
             long currTime = System.currentTimeMillis();
             for (int i = 0; i < pData.length; i++) {
-                PMR = currTime + "," + pData[i][0] + "," + pData[i][1] + "," + pData[i][2] + "," + pData[i][3] + "," +
-                        pData[i][4] + "," + pData[i][5] + "," + pData[i][6] + "," + pData[i][7] +
-                        "," + pData[i][8] + "," + pData[i][9];
+                PMR = currTime + "," + latitude + "," + longitude + "," + pData[i][0] + "," + pData[i][1] + "," +
+                        pData[i][2] + "," + pData[i][3] + "," + pData[i][4] + "," + pData[i][5] + "," + pData[i][6] +
+                        "," + pData[i][7] + "," + pData[i][8] + "," + pData[i][9];
 
                 try {
                     writeMeasurementOutputs(PMR, false);
@@ -359,104 +353,7 @@ public class MainActivity extends Activity {
         }
         else if (_DEBUG_) System.out.println("---------->PERMISSIONS ISSUE: TelephonyManager");
     }
-    /*
-    @RequiresApi(api = Build.VERSION_CODES.Q)
-    public void collectPassiveMeasurements_old() throws IOException {
-        System.out.println("=====> inside collectPassiveMeasurements()");
-        if (telephonyManager == null) throw new IOException("Null TelephonyManager");
-        else if (cellInfoCallback == null)
-            throw new IOException("Null TelephonyManager.CellInfoCallback");
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
-        }
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            fusedLocationClient.getLastLocation()
-                    .addOnSuccessListener(this, new OnSuccessListener<Location>() {
-                        @Override
-                        public void onSuccess(Location location) {
-                            // Got last known location. In some rare situations this can be null.
-                            if (location != null) {
-                                latitude = location.getLatitude();
-                                longitude = location.getLongitude();
-                                if (_DEBUG_) System.out.println("LOCATION INFO: latitude = " + latitude + ", longitude = " + longitude);
-                            }
-                        }
-                    });
-
-            telephonyManager.requestCellInfoUpdate(getMainExecutor(), cellInfoCallback);
-        }
-        else if (_DEBUG_) System.out.println("---------->PERMISSIONS ISSUE: TelephonyManager");
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.Q)
-    public void initializeTelephonyManager() {
-        telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
-        if (telephonyManager == null) {
-            if (_DEBUG_) System.out.println("ERROR: TelephonyManager is NULL.");
-            return;
-        }
-        System.out.println("=====> initializeTelephonyManager()");
-
-        cellInfoCallback = new TelephonyManager.CellInfoCallback() {
-            @Override
-            public void onCellInfo(List<CellInfo> cellInfoList) {
-                statusTextView.setText("Cell count: " + cellInfoList.size());
-                if (cellInfoList == null) {
-                    System.err.println("NO CELL INFO FOUND.");
-                    return;
-                }
-
-                CellSignalStrengthLte lteSigStrength;
-                CellIdentityLte ltecellID;
-                CellInfoLte lteInfo;
-                long currTime = System.currentTimeMillis();
-                boolean isServingCell, _DEBUG_ = true;
-
-                for (int i = 0; i < cellInfoList.size(); i++) {
-                    // Filter out non-LTE networks
-                    if (cellInfoList.get(i).getClass().toString().equals("class android.telephony.CellInfoLte")) {
-                        lteInfo = (CellInfoLte) cellInfoList.get(i);
-                        ltecellID = lteInfo.getCellIdentity();
-                        lteSigStrength = lteInfo.getCellSignalStrength();
-                        isServingCell = lteInfo.isRegistered(); //(lteInfo.getCellConnectionStatus() == CellInfo.CONNECTION_PRIMARY_SERVING);
-
-                        if (_DEBUG_) {
-                            System.out.println("Evaluating cell #" + (i + 1) + ", MNO: " + ltecellID.getMobileNetworkOperator());
-
-                            System.out.println("Cell ID: " + ltecellID.getMobileNetworkOperator() + ", CI: " + ltecellID.getCi() +
-                                    ", Earfcn: " + ltecellID.getEarfcn() + ", Pci: " + ltecellID.getPci() + ", TAC: " + ltecellID.getTac());
-                            System.out.println("Cell ID: mcc = " + ltecellID.getMccString() + ", mnc = " + ltecellID.getMncString() + ", BW = " +
-                                    ltecellID.getBandwidth());
-                            System.out.println("Cell info: connectionStatus = " + lteInfo.getCellConnectionStatus() + ", Location - LAT: " +
-                                    latitude + ", LONG:" + longitude);
-                            //System.out.println("Cell signal strength: Dbu: " + lteInfo.getCellSignalStrength().getDbm() + ", ASU = " + lteInfo.getCellSignalStrength().getAsuLevel());
-                        }
-
-                        // Compose the passive measurement report
-                        // Format: timestamp,lat,long,rsrp,rsrq,rssnr,cqi,mcc,mnc,tac,pci,earfcn,enbID,bw_khz,isServingCell
-                        PMR = currTime + "," + latitude + "," + longitude + "," + lteSigStrength.getRsrp() + "," + lteSigStrength.getRsrq() + "," +
-                                lteSigStrength.getRssnr() + "," + lteSigStrength.getCqi() + "," + ltecellID.getMccString() +
-                                "," + ltecellID.getMncString() + "," + ltecellID.getTac() + "," + ltecellID.getPci() +
-                                "," + ltecellID.getEarfcn() + "," + ltecellID.getCi() + "," + ltecellID.getBandwidth() +
-                                "," + isServingCell;
-
-                        try {
-                            System.out.println("=====> BEFORE writeMeasurementOutputs(PMR)");
-                            writeMeasurementOutputs(PMR, false);
-                            System.out.println("=====> AFTER writeMeasurementOutputs(PMR)");
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    } else {
-                        if (_DEBUG_)
-                            System.out.println("--> NON-LTE CELL FOUND: " + cellInfoList.get(i).getClass());
-                    }
-                }
-            }
-        };
-    }
-    */
     @RequiresApi(api = Build.VERSION_CODES.Q)
     private void initializeOutputFiles(long time_msecs) {
         // Create and open output CSV files for passive and active measurement data
@@ -486,7 +383,7 @@ public class MainActivity extends Activity {
         if (uri != null) {
             try {
                 pOSW = new OutputStreamWriter(resolver.openOutputStream(uri));
-                pOSW.write("timestamp,lat,long,rsrp,rsrq,rssnr,cqi,mcc,mnc,tac,pci,earfcn,enbID,bw_khz,isServingCell" + "\n");
+                pOSW.write("timestamp,lat,long,mcc-mnc,tac,pci,earfcn,rsrp,rsrq,rssnr,cqi,bw_khz,isServingCell" + "\n");
             } catch (Exception fnfe) {
                 fnfe.printStackTrace();
             }
@@ -563,18 +460,64 @@ public class MainActivity extends Activity {
         catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
     }
 
-    /** Authorizes the installed application to access user's protected data. *
-     private static Credential authorize() throws Exception {
-     // load client secrets
-     GoogleClientSecrets clientSecrets = GoogleClientSecrets.load(JSON_FACTORY,
-     new InputStreamReader(CalendarSample.class.getResourceAsStream("/client_secrets.json")));
-     // set up authorization code flow
-     GoogleAuthorizationCodeFlow flow = new GoogleAuthorizationCodeFlow.Builder(
-     httpTransport, JSON_FACTORY, clientSecrets,
-     Collections.singleton(CalendarScopes.CALENDAR)).setDataStoreFactory(dataStoreFactory)
-     .build();
-     // authorize
-     return new AuthorizationCodeInstalledApp(flow, new LocalServerReceiver()).authorize("user");
-     }
-     */
+    /**
+    public void sendMessage(View view) {
+        ((InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE))
+                .hideSoftInputFromWindow(hostEdit.getWindowToken(), 0);
+        sendButton.setEnabled(false);
+        resultText.setText("");
+        new GrpcTask(this)
+                .execute(
+                        hostEdit.getText().toString(),
+                        messageEdit.getText().toString(),
+                        portEdit.getText().toString());
+    }
+
+    private static class GrpcTask extends AsyncTask<String, Void, String> {
+        private final WeakReference<Activity> activityReference;
+        private ManagedChannel channel;
+
+        private GrpcTask(Activity activity) {
+            this.activityReference = new WeakReference<Activity>(activity);
+        }
+
+        @Override
+        protected String doInBackground(String... params) {
+            String host = params[0];
+            String message = params[1];
+            String portStr = params[2];
+            int port = TextUtils.isEmpty(portStr) ? 0 : Integer.valueOf(portStr);
+            try {
+                channel = ManagedChannelBuilder.forAddress(host, port).usePlaintext().build();
+                GreeterGrpc.GreeterBlockingStub stub = GreeterGrpc.newBlockingStub(channel);
+                HelloRequest request = HelloRequest.newBuilder().setName(message).build();
+                HelloReply reply = stub.sayHello(request);
+                return reply.getMessage();
+            } catch (Exception e) {
+                StringWriter sw = new StringWriter();
+                PrintWriter pw = new PrintWriter(sw);
+                e.printStackTrace(pw);
+                pw.flush();
+                return String.format("Failed... : %n%s", sw);
+            }
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+            try {
+                channel.shutdown().awaitTermination(1, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            Activity activity = activityReference.get();
+            if (activity == null) {
+                return;
+            }
+            TextView resultText = (TextView) activity.findViewById(R.id.grpc_response_text);
+            Button sendButton = (Button) activity.findViewById(R.id.send_button);
+            resultText.setText(result);
+            sendButton.setEnabled(true);
+        }
+    }
+     **/
 }
