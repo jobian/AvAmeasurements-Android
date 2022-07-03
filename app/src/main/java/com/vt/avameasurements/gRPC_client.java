@@ -1,8 +1,3 @@
-package com.vt.avameasurements;
-
-public class gRPC_client {
-
-}
 /*
  * Copyright 2015 The gRPC Authors
  *
@@ -19,25 +14,26 @@ public class gRPC_client {
  * limitations under the License.
  */
 
-/*
+package com.vt.avameasurements;
+
 import android.app.Activity;
 import android.content.Context;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
-import android.text.method.ScrollingMovementMethod;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
+import androidx.appcompat.app.AppCompatActivity;
+
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import io.grpc.examples.helloworld.GreeterGrpc;
-import io.grpc.examples.helloworld.HelloReply;
-import io.grpc.examples.helloworld.HelloRequest;
+//import io.grpc.examples.helloworld.GreeterGrpc;
+//import io.grpc.examples.helloworld.HelloReply;
+//import io.grpc.examples.helloworld.HelloRequest;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -54,6 +50,8 @@ public class gRPC_client extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        /*
         setContentView(R.layout.activity_helloworld);
         sendButton = (Button) findViewById(R.id.send_button);
         hostEdit = (EditText) findViewById(R.id.host_edit_text);
@@ -61,6 +59,7 @@ public class gRPC_client extends AppCompatActivity {
         messageEdit = (EditText) findViewById(R.id.message_edit_text);
         resultText = (TextView) findViewById(R.id.grpc_response_text);
         resultText.setMovementMethod(new ScrollingMovementMethod());
+        */
     }
 
     public void sendMessage(View view) {
@@ -91,10 +90,11 @@ public class gRPC_client extends AppCompatActivity {
             int port = TextUtils.isEmpty(portStr) ? 0 : Integer.valueOf(portStr);
             try {
                 channel = ManagedChannelBuilder.forAddress(host, port).usePlaintext().build();
-                GreeterGrpc.GreeterBlockingStub stub = GreeterGrpc.newBlockingStub(channel);
-                HelloRequest request = HelloRequest.newBuilder().setName(message).build();
-                HelloReply reply = stub.sayHello(request);
-                return reply.getMessage();
+                //GreeterGrpc.GreeterBlockingStub stub = GreeterGrpc.newBlockingStub(channel);
+                //HelloRequest request = HelloRequest.newBuilder().setName(message).build();
+                //HelloReply reply = stub.sayHello(request);
+                //return reply.getMessage();
+                return ""; // DLD: temp
             } catch (Exception e) {
                 StringWriter sw = new StringWriter();
                 PrintWriter pw = new PrintWriter(sw);
@@ -115,11 +115,10 @@ public class gRPC_client extends AppCompatActivity {
             if (activity == null) {
                 return;
             }
-            TextView resultText = (TextView) activity.findViewById(R.id.grpc_response_text);
-            Button sendButton = (Button) activity.findViewById(R.id.send_button);
-            resultText.setText(result);
-            sendButton.setEnabled(true);
+            //TextView resultText = (TextView) activity.findViewById(R.id.grpc_response_text);
+            //Button sendButton = (Button) activity.findViewById(R.id.send_button);
+            //resultText.setText(result);
+            //sendButton.setEnabled(true);
         }
     }
 }
-*/
