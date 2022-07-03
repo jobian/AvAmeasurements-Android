@@ -153,7 +153,7 @@ public class NDT7Test implements Runnable, MeasurementTest {
                 @NotNull TestType testType
         ) {
             assert clientResponse != null;
-            System.out.println("Done Progress: " + DataConverter.convertToMbps(clientResponse));
+            if (MainActivity._DEBUG_NDT_) System.out.println("Done Progress: " + DataConverter.convertToMbps(clientResponse));
             //writeToCSV(measurementReport + "," + DataConverter.convertToMbps(clientResponse));
         }
     }
