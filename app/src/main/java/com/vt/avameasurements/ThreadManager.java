@@ -44,52 +44,32 @@ public class ThreadManager extends Application {
         NDT7
     }
 
-    public static double latitude=0.0, longitude=0.0;
     ExecutorService threadpool;
     Activity activity;
     Context context;
     TelephonyManager mTelephonyManager;
     private final String _TAG_ = "ThreadManager";
+    PassiveMeasurementTest pmt;
+    NDT7Test ndt7;
 
     public ThreadManager(Activity appActivity, Context appContext, TelephonyManager telephonyManager) {
         this.threadpool = Executors.newFixedThreadPool(MeasurementTestType.values().length);
         this.activity = appActivity;
         this.context = appContext;
         this.mTelephonyManager = telephonyManager;
-
-        FusedLocationProviderClient fusedLocationClient  = LocationServices.getFusedLocationProviderClient(activity);
-        LocationRequest locationRequest  = LocationRequest.create();
-        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-        locationRequest.setInterval(5 * 1000); // 5-second interval for location check
-
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            fusedLocationClient.getLastLocation().addOnSuccessListener(activity, location -> {
-                if (location != null) {
-                    latitude = location.getLatitude();
-                    longitude = location.getLongitude();
-                    if (MainActivity._DEBUG_)
-                        System.out.println("[" + _TAG_ + "]: LOCATION INFO: latitude = " + latitude + ", longitude = " + longitude);
-                }
-            });
-        }
     }
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
     public void runAllTests() {
         // creates separate Runnable tasks
-        PassiveMeasurementTest pmt = new PassiveMeasurementTest(activity, context, mTelephonyManager);
-        NDT7Test ndt7 = new NDT7Test(context);
+        pmt = new PassiveMeasurementTest(activity, context, mTelephonyManager);
+        ndt7 = new NDT7Test(context, this);
         //Runnable r3 = new Task("task 3");
 
         // passes the Runnable tasks to the thread pool to execute
         threadpool.execute(pmt);
         threadpool.execute(ndt7);
         //threadpool.execute(r5); // Placeholder for additional measurements tests
-
-        // pool shutdown ( Step 4)
-        threadpool.shutdown();
-        pmt = null;
-        ndt7 = null;
     }
 
     /**
@@ -101,5 +81,14 @@ public class ThreadManager extends Application {
     public static String formatTestID(long testID) {
         final int paddingLength = 8;
         return String.format(Locale.US, "%0" + paddingLength + "d", testID);
+    }
+
+    public void endTests() {
+        this.activity.runOnUiThread(() -> ((MainActivity)this.activity).onDestroy());
+
+        // pool shutdown ( Step 4)
+        threadpool.shutdown();
+        pmt = null;
+        ndt7 = null;
     }
 }

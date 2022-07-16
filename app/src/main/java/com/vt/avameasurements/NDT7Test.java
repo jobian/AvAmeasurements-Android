@@ -15,6 +15,7 @@ import static com.vt.avameasurements.MainActivity.duration_secs;
 import static com.vt.avameasurements.MainActivity.interval_secs;
 import static com.vt.avameasurements.MainActivity.start_time;
 
+import android.app.Application;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
@@ -42,14 +43,16 @@ import okhttp3.OkHttpClient;
 
 public class NDT7Test implements Runnable, MeasurementTest {
     Context context;
+    ThreadManager threadManager;
     private final String _TAG_ = "NDT7Test";
     OutputStreamWriter osw = null;
     String measurementReport = null;
-    String speed;
+    public static String speed;
 
     @RequiresApi(api = Build.VERSION_CODES.Q)
-    public NDT7Test(@NonNull Context appContext) {
+    public NDT7Test(@NonNull Context appContext, @NonNull ThreadManager app) {
         this.context = appContext;
+        this.threadManager = app;
         initCSVFile();
     }
 
@@ -68,19 +71,19 @@ public class NDT7Test implements Runnable, MeasurementTest {
 
         while (currTime < endTime) {
             if (MainActivity._DEBUG_NDT_) System.out.println("--> before ndt.startTest()");
-            ndtTestImpl.startTest(NdtTest.TestType.DOWNLOAD);
-            if (MainActivity._DEBUG_NDT_) System.out.println("--> after ndt.startTest()");
+            ndtTestImpl.startTest(NdtTest.TestType.DOWNLOAD); // initiate a new NDT7 test
 
             processingTime = System.currentTimeMillis() - currTime;
-            processWait((long)interval_secs * 1000 - processingTime);//.get() * 1000 - processingTime);
-
-            if (MainActivity._DEBUG_NDT_) System.out.println("--> after WAIT()");
+            if (interval_secs * 1000 - processingTime > 0) {
+                processWait((long) interval_secs * 1000 - processingTime);
+            }
 
             currTime = System.currentTimeMillis();
         }
 
         measurementReport = "";
         closeCSVFile();
+        threadManager.endTests();
     }
 
     /**
@@ -101,25 +104,14 @@ public class NDT7Test implements Runnable, MeasurementTest {
         }
 
         @Override
-        public void onDownloadProgress(@NotNull ClientResponse clientResponse) {
-            super.onDownloadProgress(clientResponse);
-            showDownloadProgress(clientResponse);
-            //clientResponse.getAppInfo().getElapsedTime();
-        }
-
-        @Override
         public void onMeasurementDownloadProgress(@NotNull Measurement measurement) {
             super.onMeasurementDownloadProgress(measurement);
 
-            String speed_str = "";
-            if (speed != null) speed_str = speed;
             if (MainActivity._DEBUG_NDT_) System.out.println("Measurement download Progress: " + measurement.getBbrInfo().getElapsedTime());
             measurementReport = System.currentTimeMillis() + "," + measurement.getBbrInfo().getBw() + "," + measurement.getTcpInfo().getMinRtt() + "," +
                     measurement.getBbrInfo().getCwndGain() + "," + measurement.getTcpInfo().getRtt() + "," + measurement.getTcpInfo().getRttVar() + "," +
                     measurement.getTcpInfo().getTotalRetrans() + "," + measurement.getBbrInfo().getPacingGain() + "," +
-                    measurement.getTcpInfo().getBusyTime() + "," + measurement.getTcpInfo().getElapsedTime() + "," + speed_str;
-
-            writeToCSV(measurementReport);
+                    measurement.getTcpInfo().getBusyTime() + "," + measurement.getTcpInfo().getElapsedTime();
 
             if (MainActivity._DEBUG_NDT_) {
                 System.out.println("\t-->Measurement download progress: BW = " + measurement.getBbrInfo().getBw());
@@ -154,7 +146,7 @@ public class NDT7Test implements Runnable, MeasurementTest {
         ) {
             assert clientResponse != null;
             if (MainActivity._DEBUG_NDT_) System.out.println("Done Progress: " + DataConverter.convertToMbps(clientResponse));
-            //writeToCSV(measurementReport + "," + DataConverter.convertToMbps(clientResponse));
+            writeToCSV(measurementReport + "," + DataConverter.convertToMbps(clientResponse));
         }
     }
 
@@ -211,20 +203,5 @@ public class NDT7Test implements Runnable, MeasurementTest {
         }
 
         if (MainActivity._DEBUG_NDT_) System.out.println("[" + _TAG_ + "] EXITING. CLOSING FILES.");
-    }
-
-    private String formatProgress(ClientResponse clientResponse) {
-        DecimalFormat decimalFormat = new DecimalFormat();
-        return String.format(
-                "%s",
-                decimalFormat.format(DataConverter.convertToMbps(clientResponse))
-        );
-    }
-
-    private void showDownloadProgress(ClientResponse clientResponse) {
-        speed = formatProgress(clientResponse);
-        if (_DEBUG_NDT_) System.out.println("-->Download Progress: " + speed);
-        //downloadProgressTextView.setText(speed);
-
     }
 }

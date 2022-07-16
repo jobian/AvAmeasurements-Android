@@ -59,14 +59,12 @@ public class MainActivity extends Activity {
                 interval_secs = 30; // Default/minimum: 30-sec interval
             }
 
+            if (_DEBUG_) System.out.println("Initiating ThreadManager...");
             toggleEnabledButtons(true);
 
-            if (_DEBUG_) System.out.println("Initiating ThreadManager...");
             ThreadManager tm = new ThreadManager(this, getApplicationContext(),
                     (TelephonyManager)getSystemService(Context.TELEPHONY_SERVICE));
             tm.runAllTests();
-
-            toggleEnabledButtons(false);
         });
 
         stopButton.setOnClickListener(v -> this.onDestroy());
@@ -74,8 +72,10 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
+        downloadProgressTextView.setText(NDT7Test.speed);
         toggleEnabledButtons(false);
+        super.onDestroy();
+        if (_DEBUG_) System.out.println("END OF RUNS.");
     }
 
     private void toggleEnabledButtons(boolean testIsRunning) {
